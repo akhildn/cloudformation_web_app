@@ -87,9 +87,5 @@ You'll need two vCPUs and at least 4GB of RAM. The Operating System to be used i
 **Please refer to the output section of cloudformation** 
 
 
-## My Deployment URL
-**http://udagram-alb-1284067575.us-east-1.elb.amazonaws.com/**
-
-
 ### Notes 
 - You can ssh into bastion host and then ssh into your app servers 
