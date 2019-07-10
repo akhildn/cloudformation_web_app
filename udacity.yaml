@@ -1,0 +1,398 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Udacity Udagram project"
+
+Parameters:
+  VPCCIDR:
+    Description: CIDR ip for your vpc
+    Type: String
+    Default: 10.1.0.0/20
+  PublicSunbet1:
+    Description: CIDR ip for your public subnet 1
+    Type: String
+    Default: 10.1.0.0/27
+  PublicSunbet2:
+    Description: CIDR ip for your public subnet 2
+    Type: String
+    Default: 10.1.0.32/27
+  PrivateSubnet1:
+    Description: CIDR ip for your private subnet 1
+    Type: String
+    Default: 10.1.0.64/27
+  PrivateSubnet2:
+    Description: CIDR ip for your private subnet 1
+    Type: String
+    Default: 10.1.0.96/27
+  s3bucket:
+    Description: s3 bucket which has your code
+    Type: String
+    Default: anayabu-udacity
+  s3ReadWritePolicyName:
+    Description: iam policy which has permission to read and write to s3 bucket
+    Type: String
+    Default: s3ReadWritePolicy
+  InstanceRoleName:
+    Description: iam role name which s3ReadWritePolicyName policy attached to it
+    Type: String
+    Default: S3AccessForEC2
+
+
+Resources:
+
+  UdacityLabVPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: !Ref VPCCIDR
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      InstanceTenancy: "default"
+      Tags:
+        - Key: Project
+          Value: udacity
+
+  UdacityPublicSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref UdacityLabVPC
+      CidrBlock: !Ref PublicSunbet1
+      AvailabilityZone: "us-east-1a"
+      MapPublicIpOnLaunch: True
+
+  UdacityPublicSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref UdacityLabVPC
+      CidrBlock: !Ref PublicSunbet2
+      AvailabilityZone: "us-east-1b"
+      MapPublicIpOnLaunch: True
+
+  UdacityPrivateSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref UdacityLabVPC
+      CidrBlock: !Ref PrivateSubnet1
+      AvailabilityZone: "us-east-1a"
+
+  UdacityPrivateSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref UdacityLabVPC
+      CidrBlock: !Ref PrivateSubnet2
+      AvailabilityZone: "us-east-1b"
+
+  UdacityInternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+
+  UdacityInternetGatewayAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId: !Ref UdacityLabVPC
+      InternetGatewayId: !Ref UdacityInternetGateway
+
+  ElasticIPNATGateway:
+    Type: "AWS::EC2::EIP"
+    Properties:
+      Domain: "vpc"
+
+  NATGateway:
+    Type: "AWS::EC2::NatGateway"
+    Properties:
+      SubnetId: !Ref UdacityPublicSubnet1
+      AllocationId:
+        Fn::GetAtt:
+          - ElasticIPNATGateway
+          - AllocationId
+
+  UdacityPublicRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref UdacityLabVPC
+
+  UdacityPrivateRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref UdacityLabVPC
+
+  UdacityPublicRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref UdacityPublicRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref UdacityInternetGateway
+
+  UdacityPrivateRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref UdacityPrivateRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref NATGateway
+
+  UdacityPrivateSubnet1RouteAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref UdacityPrivateSubnet1
+      RouteTableId: !Ref UdacityPrivateRouteTable
+
+  UdacityPrivateSubnet2RouteAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref UdacityPrivateSubnet2
+      RouteTableId: !Ref UdacityPrivateRouteTable
+
+  UdacityPublicSubnet1RouteAssociate:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref UdacityPublicSubnet1
+      RouteTableId: !Ref UdacityPublicRouteTable
+
+  UdacityPublicSubnet2RouteAssociate:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref UdacityPublicSubnet2
+      RouteTableId: !Ref UdacityPublicRouteTable
+
+  S3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Ref s3ReadWritePolicyName
+      Roles:
+        - !Ref InstanceProfileRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:CreateBucket
+              - s3:GetObject
+              - s3:List*
+              - s3:PutObject
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - s3:GetBucketAcl
+              - s3:GetBucketLocation
+            Resource: '*'
+
+  InstanceProfileRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Ref InstanceRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Action:
+              - "sts:AssumeRole"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+
+  InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      InstanceProfileName: 'InstanceProfileEC2'
+      Path: /
+      Roles:
+        - !Ref InstanceProfileRole
+
+  BastionSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: BastionGroup
+      GroupDescription: SSH bastion host from my pc
+      VpcId: !Ref UdacityLabVPC
+
+  BastionSecurityGroupEgress:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref BastionSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: 0.0.0.0/0
+
+  ALBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: ALBSG
+      GroupDescription: http access from internet
+      VpcId: !Ref UdacityLabVPC
+
+  ALBSecurityGroupHttpIngress:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+
+  ALBSecurityGroupHttpIngressPrivate:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref AppServerSecurityGroup
+
+  AppServerSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: AppServerSG
+      GroupDescription: http from ALB and ssh from bastion
+      VpcId: !Ref UdacityLabVPC
+
+  AppServerSecurityGroupSSHIngress:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref AppServerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      SourceSecurityGroupId: !Ref BastionSecurityGroup
+
+  AppServerSecurityGroupHttpsIngress:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref AppServerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
+
+  UdacityLaunchConfiguration:
+    Type: "AWS::AutoScaling::LaunchConfiguration"
+    Properties:
+      ImageId: "ami-026c8acd92718196b"
+      BlockDeviceMappings:
+        -
+          DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeSize: 10
+            DeleteOnTermination: true
+            VolumeType: "gp2"
+      EbsOptimized: false
+      IamInstanceProfile: !Ref InstanceProfile
+      InstanceMonitoring: false
+      InstanceType: "t2.medium"
+      LaunchConfigurationName: "udacity-udagram-lg"
+      SecurityGroups:
+        - !Ref AppServerSecurityGroup
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash
+          sudo apt-get update -y
+          sudo apt-get install apache2 -y
+          sudo service apache2 start
+          sudo apt install python-pip -y
+          sudo pip install awscli
+          sudo aws s3 cp s3://${s3bucket}/ /var/www/html/ --recursive
+
+  UdacityASG:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      AutoScalingGroupName: "udacity-udagram-asg"
+      LaunchConfigurationName: !Ref UdacityLaunchConfiguration
+#      LoadBalancerNames:
+#        - !Ref UdacityALB
+      DesiredCapacity: 4
+      MinSize: 4
+      MaxSize: 8
+      HealthCheckGracePeriod: 300
+      TargetGroupARNs:
+        - !Ref UdacityALBTargetGroup
+      Tags:
+        -
+          ResourceType: "auto-scaling-group"
+          Key: "Project"
+          Value: "udacity"
+          PropagateAtLaunch: true
+          ResourceId: "udacity-udagram-asg"
+      VPCZoneIdentifier:
+        - !Ref UdacityPrivateSubnet1
+        - !Ref UdacityPrivateSubnet2
+
+  UdacityASGScalingPolicy:
+    Type: "AWS::AutoScaling::ScalingPolicy"
+    Properties:
+      AutoScalingGroupName: !Ref UdacityASG
+      PolicyType: "TargetTrackingScaling"
+      TargetTrackingConfiguration:
+        TargetValue: 80
+        DisableScaleIn: false
+        PredefinedMetricSpecification:
+          PredefinedMetricType: "ASGAverageCPUUtilization"
+      EstimatedInstanceWarmup: 300
+
+  UdacityALB:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Name: "udagram-alb"
+      Scheme: "internet-facing"
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Subnets:
+        - !Ref UdacityPublicSubnet1
+        - !Ref UdacityPublicSubnet2
+      Tags: []
+      IpAddressType: "ipv4"
+      Type: "application"
+
+  LoadBalancerListener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref UdacityALBTargetGroup
+      LoadBalancerArn: !Ref UdacityALB
+      Port: 80
+      Protocol: HTTP
+
+  UdacityALBTargetGroup:
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: "/"
+      HealthCheckProtocol: "HTTP"
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      Matcher:
+        HttpCode: "200"
+      Name: "udagram-target-group"
+      Port: 80
+      Protocol: "HTTP"
+      TargetType: "instance"
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref UdacityLabVPC
+
+  BastionHostEC2:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: "ami-026c8acd92718196b"
+      IamInstanceProfile: !Ref InstanceProfile
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeSize: 8
+            DeleteOnTermination: true
+            VolumeType: "gp2"
+      InstanceType: "t2.micro"
+      SubnetId: !Ref UdacityPublicSubnet1
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      Tags:
+        - Key: Name
+          Value: "BastionHost"
+
+
+Outputs:
+
+  DNSNAME:
+    Value:
+      Fn::Join:
+        - ''
+        - - "http://"
+          - !GetAtt UdacityALB.DNSName
+          - "/"
